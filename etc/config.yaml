@@ -1,3 +1,5 @@
+application:
+  log_path: logs/app.log
 github:
   # APIのURL
   base_url: https://api.github.com
