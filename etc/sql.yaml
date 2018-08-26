@@ -1,0 +1,211 @@
+pull_requests:
+  create: >
+    CREATE TABLE IF NOT EXISTS `pull_requests` (
+      `url`        TEXT      NOT NULL,
+      `author`     TEXT      NOT NULL,
+      `created_at` TIMESTAMP NOT NULL,
+      `updated_at` TIMESTAMP NOT NULL,
+      `merged_at`  TIMESTAMP,
+      `issue_url`  TEXT      NOT NULL,
+      PRIMARY KEY(`url`)
+    )
+  replace: >
+    REPLACE INTO `pull_requests` VALUES (?, ?, ?, ?, ?, ?)
+  select_updated_at: >
+    SELECT `url`, `updated_at` FROM `pull_requests` WHERE `url` == ?
+issue_comments:
+  create: >
+    CREATE TABLE IF NOT EXISTS `issue_comments` (
+      `url`        TEXT      NOT NULL,
+      `commenter`  TEXT      NOT NULL,
+      `created_at` TIMESTAMP NOT NULL,
+      `issue_url`  TEXT      NOT NULL,
+      PRIMARY KEY(`url`)
+    )
+  replace: >
+    REPLACE INTO `issue_comments` VALUES (?, ?, ?, ?)
+pull_request_reviews:
+  create: >
+    CREATE TABLE IF NOT EXISTS "pull_request_reviews" (
+      `url`              TEXT      NOT NULL,
+      `reviewer`         TEXT      NOT NULL,
+      `submitted_at`     TIMESTAMP NOT NULL,
+      `pull_request_url` TEXT      NOT NULL,
+      PRIMARY KEY(`url`)
+    )
+  replace: >
+    REPLACE INTO `pull_request_reviews` VALUES (?, ?, ?, ?)
+pull_request_comments:
+  create: >
+    CREATE TABLE IF NOT EXISTS `pull_request_comments` (
+      `url`              TEXT      NOT NULL,
+      `commenter`        TEXT      NOT NULL,
+      `created_at`       TIMESTAMP NOT NULL,
+      `pull_request_url` TEXT      NOT NULL,
+      PRIMARY KEY(`url`)
+    )
+  replace: >
+    REPLACE INTO `pull_request_comments` VALUES (?, ?, ?, ?)
+created_pull_request_counts:
+  create: >
+    CREATE VIEW IF NOT EXISTS
+      created_pull_request_counts
+    AS SELECT
+      date(created_at, 'localtime') AS created_date,
+      author,
+      count(*) as count
+    FROM
+      pull_requests
+    GROUP BY
+      created_date,
+      author
+merged_pull_request_counts:
+  create: >
+    CREATE VIEW IF NOT EXISTS
+      merged_pull_request_counts
+    AS SELECT
+      date(merged_at, 'localtime') AS merged_date,
+      author,
+      count(*) as count
+    FROM
+      pull_requests
+    WHERE
+      merged_date IS NOT NULL
+    GROUP BY
+      merged_date,
+      author
+commented_pull_request_counts:
+  create: >
+    CREATE VIEW IF NOT EXISTS
+      commented_pull_request_counts
+    AS SELECT
+      date(created_at, 'localtime') AS commented_date,
+      commenter AS user,
+      count(DISTINCT pull_request_url) AS count
+    FROM
+      (
+        SELECT
+          issue_comments.commenter AS commenter,
+          issue_comments.created_at AS created_at,
+          pull_requests.url AS pull_request_url
+        FROM
+          pull_requests,
+          issue_comments
+        WHERE
+          pull_requests.issue_url = issue_comments.issue_url
+        UNION ALL
+          SELECT
+            commenter,
+            created_at,
+            pull_request_url
+          FROM
+            pull_request_comments
+        UNION ALL
+          SELECT
+            reviewer,
+            submitted_at,
+            pull_request_url
+          FROM
+            pull_request_reviews
+      )
+    GROUP BY
+      commented_date,
+      commenter
+    ORDER BY
+      commented_date,
+      user
+comment_counts:
+  # commented_pull_request_countsとはcount(*)の部分が異なる
+  create: >
+    CREATE VIEW IF NOT EXISTS
+      comment_counts
+    AS SELECT
+      date(created_at, 'localtime') AS commented_date,
+      commenter AS user,
+      count(*) AS count
+    FROM
+      (
+        SELECT
+          issue_comments.commenter AS commenter,
+          issue_comments.created_at AS created_at,
+          pull_requests.url AS pull_request_url
+        FROM
+          pull_requests,
+          issue_comments
+        WHERE
+          pull_requests.issue_url = issue_comments.issue_url
+        UNION ALL
+          SELECT
+            commenter,
+            created_at,
+            pull_request_url
+          FROM
+            pull_request_comments
+        UNION ALL
+          SELECT
+            reviewer,
+            submitted_at,
+            pull_request_url
+          FROM
+            pull_request_reviews
+      )
+    GROUP BY
+      commented_date,
+      commenter
+    ORDER BY
+      commented_date,
+      user
+all_counts:
+  create: >
+    CREATE VIEW IF NOT EXISTS
+      all_counts
+    AS SELECT
+      all_date_user.date AS date,
+      all_date_user.user AS user,
+      ifnull(created_pull_request_counts.count, 0) AS created_pull_request_count,
+      ifnull(merged_pull_request_counts.count, 0) AS merged_pull_request_count,
+      ifnull(commented_pull_request_counts.count, 0) AS commented_pull_request_count,
+      ifnull(comment_counts.count, 0) AS comment_count
+    FROM
+      (
+        SELECT
+          created_date AS date,
+          author AS user
+        FROM
+          created_pull_request_counts
+        UNION
+          SELECT
+            merged_date,
+            author
+          FROM
+            merged_pull_request_counts
+        UNION
+          SELECT
+            commented_date,
+            user
+          FROM
+            commented_pull_request_counts
+      ) all_date_user
+    LEFT OUTER JOIN
+      created_pull_request_counts
+    ON
+      date = created_date
+      AND all_date_user.user = created_pull_request_counts.author
+    LEFT OUTER JOIN
+      merged_pull_request_counts
+    ON
+      date = merged_date
+      AND all_date_user.user = merged_pull_request_counts.author
+    LEFT OUTER JOIN
+      commented_pull_request_counts
+    ON
+      date = commented_pull_request_counts.commented_date
+      AND all_date_user.user = commented_pull_request_counts.user
+    LEFT OUTER JOIN
+      comment_counts
+    ON
+      date = comment_counts.commented_date
+      AND all_date_user.user = comment_counts.user
+    ORDER BY
+      date,
+      user

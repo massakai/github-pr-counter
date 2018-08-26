@@ -1,0 +1,26 @@
+github:
+  # APIのURL
+  base_url: https://api.github.com
+  # リクエスト制限
+  #   設定した場合: 5,000 requests/hour
+  #   設定しない場合:  60 requests/hour
+  # GitHub Enterpriseではrate-limitingがないかも
+  token: <TOKEN>
+  # 集計対象のIssueを検索するクエリ
+  # - org:
+  # - startdate:
+  # - enddate:
+  search_issue_query:
+    # - 'is:pr org:{org} created_at:{startdate}..{enddate}'
+    # - 'is:pr org:{org} merged_at:{startdate}..{enddate}'
+    # - 'is:pr org:{org} updated_at:{startdate}..{enddate}'
+    # - 'is:pr author:massakai'
+    - 'is:pr org:PyGithub'
+  # 集計対象のユーザー (ログイン名)
+  users:
+    - sfdye
+    - res0nance
+database:
+  path: var/event.db
+  sql_path: etc/sql.yaml
+
